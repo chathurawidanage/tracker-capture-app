@@ -3,7 +3,7 @@
 var trackerCapture = angular.module('trackerCapture');
 trackerCapture.controller('EnrollmentController',
         function($rootScope,
-                $scope,  
+                $scope,
                 $route,
                 $location,
                 $timeout,
@@ -16,8 +16,9 @@ trackerCapture.controller('EnrollmentController',
                 ModalService,
                 OrgUnitFactory,
                 NotificationService,
-                AuthorityService) {
-    
+                AuthorityService,
+                TEIService) {
+
         var selections;
         $scope.userAuthority = AuthorityService.getUserAuthorities(SessionStorageService.get('USER_PROFILE'));
         var currentReportDate;
@@ -89,9 +90,9 @@ trackerCapture.controller('EnrollmentController',
             $scope.orgUnits = response.organisationUnits;
             angular.forEach($scope.orgUnits, function(ou){
                 ou.show = true;
-                angular.forEach(ou.children, function(o){                    
+                angular.forEach(ou.children, function(o){
                     o.hasChildren = o.children && o.children.length > 0 ? true : false;
-                });            
+                });
             });
         });
 
@@ -110,7 +111,7 @@ trackerCapture.controller('EnrollmentController',
             }
             else{
                 orgUnit.show = !orgUnit.show;
-            }     
+            }
         };
 
         $scope.toggleOrgUnitEditing = function(){
@@ -122,11 +123,21 @@ trackerCapture.controller('EnrollmentController',
             $scope.selectedEnrollment.orgUnitName = orgUnit.displayName;
 
             $scope.enrollmentOrgUnitState.status = "pending";
-            EnrollmentService.update($scope.selectedEnrollment).then(function(){
-                $scope.enrollmentOrgUnitState.status = 'success';
-            }, function(){
-                $scope.enrollmentOrgUnitState.status = 'error';
-            });       
+
+            $scope.selectedTei.orgUnit = orgUnit.id;
+
+            TEIService.changeTeiProgramOwner($scope.selectedTei.trackedEntityInstance,
+                $scope.selectedProgram.id, orgUnit.id).then(function (response) {
+                TEIService.update($scope.selectedTei, $scope.optionSets, $scope.attributesById).then(function () {
+                    EnrollmentService.update($scope.selectedEnrollment).then(function () {
+                        $scope.enrollmentOrgUnitState.status = 'success';
+                    }, function () {
+                        $scope.enrollmentOrgUnitState.status = 'error';
+                    });
+                }, function () {
+                    $scope.enrollmentOrgUnitState.status = 'error';
+                });
+            });
         };
 
         $scope.$on('ownerUpdated', function(event, args){
@@ -233,7 +244,7 @@ trackerCapture.controller('EnrollmentController',
             if (!DateUtils.verifyExpiryDate(date, $scope.selectedProgram.expiryPeriodType, $scope.selectedProgram.expiryDays)) {
                 NotificationService.showNotifcationDialog($translate.instant("error"), $translate.instant("event_date_out_of_range"));
                 dateSetter($scope, null);
-                
+
             }
         };
         $scope.loadEnrollmentDetails = function (enrollment) {
@@ -253,12 +264,12 @@ trackerCapture.controller('EnrollmentController',
                     headerText: 'warning',
                     bodyText: 'can_not_add_new_enrollment'
                 };
-    
+
                 ModalService.showModal({}, modalOptions);
 
                 return;
             }
-            
+
             $scope.showEnrollmentDiv = !$scope.showEnrollmentDiv;
 
             if(!$scope.showEnrollmentDiv) {
@@ -271,13 +282,13 @@ trackerCapture.controller('EnrollmentController',
 
                 //load new enrollment details
                 $scope.selectedEnrollment = {orgUnitName: $scope.selectedOrgUnit.displayName};
-                
+
                 if( $scope.selectedProgram && $scope.selectedProgram.captureCoordinates ){
                     $scope.selectedEnrollment.coordinate = {};
                 }
 
                 $scope.loadEnrollmentDetails($scope.selectedEnrollment);
-                
+
                 $timeout(function () {
                     $rootScope.$broadcast('registrationWidget', {
                         registrationMode: 'ENROLLMENT',
@@ -342,12 +353,12 @@ trackerCapture.controller('EnrollmentController',
         };
 
         $scope.activateDeactivateEnrollment = function () {
-            
+
             if($scope.enrollmentForm && $scope.enrollmentForm.$invalid){
                 NotificationService.showNotifcationDialog($translate.instant("error"), $translate.instant("form_invalid"));
                 return;
             }
-            
+
             var modalOptions = {
                 closeButtonText: 'no',
                 actionButtonText: 'yes',
@@ -357,25 +368,25 @@ trackerCapture.controller('EnrollmentController',
 
 
             ModalService.showModal({}, modalOptions).then(function (result) {
-                
+
                 var en = angular.copy( $scope.selectedEnrollment );
                 en.status = $scope.selectedEnrollment.status === 'CANCELLED' ? 'ACTIVE' : 'CANCELLED';
                 EnrollmentService.update( en ).then(function ( data ) {
                     if( data && data.status === 'OK' ){
                         $scope.selectedEnrollment.status = $scope.selectedEnrollment.status === 'CANCELLED' ? 'ACTIVE' : 'CANCELLED';
                         $scope.loadEnrollmentDetails($scope.selectedEnrollment);
-                    }                    
+                    }
                 });
             });
         };
 
         $scope.completeReopenEnrollment = function () {
-            
+
             if($scope.enrollmentForm && $scope.enrollmentForm.$invalid){
                 NotificationService.showNotifcationDialog($translate.instant("error"), $translate.instant("form_invalid"));
                 return;
             }
-            
+
             var modalOptions = {
                 closeButtonText: 'no',
                 actionButtonText: 'yes',
@@ -385,7 +396,7 @@ trackerCapture.controller('EnrollmentController',
 
 
             ModalService.showModal({}, modalOptions).then(function (result) {
-                
+
                 var en = angular.copy( $scope.selectedEnrollment );
                 en.status = $scope.selectedEnrollment.status === 'ACTIVE' ? 'COMPLETED' : 'ACTIVE';
                 EnrollmentService.update( en ).then(function (data) {
@@ -407,7 +418,7 @@ trackerCapture.controller('EnrollmentController',
             return false;
 
         }
-        
+
         $scope.deleteEnrollment = function () {
             if(!canDeleteEnrollment()){
                 var bodyText = $translate.instant("cannot_delete_this_enrollment_because_it_already_contains_events");
@@ -421,7 +432,7 @@ trackerCapture.controller('EnrollmentController',
                 bodyText: 'are_you_sure_to_delete_enrollment'
             };
 
-            ModalService.showModal({}, modalOptions).then(function (result) {                
+            ModalService.showModal({}, modalOptions).then(function (result) {
                 EnrollmentService.delete( $scope.selectedEnrollment ).then(function (data) {
                     if(data.httpStatus === 'OK' || data.httpStatusCode === 200) {
                         angular.forEach($scope.enrollments, function(enrollment, index){
@@ -443,12 +454,12 @@ trackerCapture.controller('EnrollmentController',
         };
 
         $scope.markForFollowup = function () {
-            
+
             if($scope.enrollmentForm && $scope.enrollmentForm.$invalid){
                 NotificationService.showNotifcationDialog($translate.instant("error"), $translate.instant("form_invalid"));
                 return;
             }
-            
+
             $scope.selectedEnrollment.followup = !$scope.selectedEnrollment.followup;
             EnrollmentService.update($scope.selectedEnrollment);
         };
@@ -505,7 +516,7 @@ trackerCapture.controller('EnrollmentController',
                 bodyText: 'change_date_with_dependency_information',
                 actionButtons: [{ text: 'update', action: {}, class: 'btn btn-primary'}]
             };
-        
+
             return ModalService.showModal({}, modalOptions);
         }
 
@@ -529,7 +540,7 @@ trackerCapture.controller('EnrollmentController',
                 currentReportDate.status = 'saved';
             }, function(){
                 currentReportDate.status = 'error';
-            });   
+            });
         }
 
         $scope.changeProgram = function (program) {
@@ -558,11 +569,11 @@ trackerCapture.controller('EnrollmentController',
             }
             return true;
         };
-        
-        $scope.saveCoordinate = function(param){            
-            var en = angular.copy( $scope.currentEnrollment );            
+
+        $scope.saveCoordinate = function(param){
+            var en = angular.copy( $scope.currentEnrollment );
             $scope.enrollmentLatSaved = false;
-            $scope.enrollmentLngSaved = false;            
+            $scope.enrollmentLngSaved = false;
             EnrollmentService.update( en ).then(function (data) {
                 $scope.enrollmentLatSaved = true;
                 $scope.enrollmentLngSaved = true;
